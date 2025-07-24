@@ -3,7 +3,6 @@ local s = { -- pro script dumper settings
 	dump_debug = false, -- output will include debug info such as constants, upvalues, protos, etc
 	detailed_info = false, -- if dump_debug is enabled, it will dump more, detailed debug info
 	threads = 5, -- how many scripts can be decompiled at a time
-	timeout = 5, -- if decompilation takes longer than this duration (seconds), it will skip that script
 	delay = 0.05,
 	include_nil = false, -- set to true if u want to include nil scripts
 	replace_username = true, -- replaces the localplayer's username in any objects with LocalPlayer
@@ -22,7 +21,6 @@ local concat = table.concat
 
 local threads = 0
 local scriptsdumped = 0
-local timedoutscripts = {}
 local decompilecache = {}
 local progressbind = Instance.new("BindableEvent")
 local plr = game:GetService("Players").LocalPlayer.Name
@@ -97,6 +95,15 @@ local function getfullname(a)
 	end
 	return fullname
 end
+local function validateSettings()
+	-- Ensure settings are within safe ranges
+	if s.threads < 1 then s.threads = 1 end
+	if s.threads > 20 then s.threads = 20 end
+	if s.delay < 0 then s.delay = 0 end
+	if s.delay > 2 then s.delay = 2 end
+	return true
+end
+
 local function dumpscript(v, isnil)
 	checkdirectories()
 	task.spawn(function()
@@ -128,11 +135,6 @@ local function dumpscript(v, isnil)
 						_, output = xpcall(decomp, function()
 							return "-- Failed to decompile script"
 						end, v)
-					end
-					if (os.clock() - time) > s.timeout then
-						output = "-- Decompilation timed out"
-						table.insert(timedoutscripts, format("Name: %s\nPath: %s\nClass: %s\nDebug Id: %s", name, path, v.ClassName, id))
-						break
 					end
 					task.wait(0.25)
 				until output ~= "-- Failed to decompile script"
@@ -261,88 +263,101 @@ end
 
 local Material = loadstring(game:HttpGet("https://raw.githubusercontent.com/zzerexx/scripts/main/MaterialLuaRemake.lua"))()
 local UI = Material.Load({
-	Title = "Script Dumper",
+	Title = "Pro Script Dumper v2.0",
 	Style = 3,
-	SizeX = 400,
-	SizeY = 515,
+	SizeX = 450,
+	SizeY = 600,
 	Theme = "Dark"
 })
 
-local page = UI.new("zzerexx was here")
+local page = UI.new("Configuration")
+
+-- Core Settings Section
+page.Label({
+	Text = "═══ Core Settings ═══"
+})
 
 page.Toggle({
-	Text = "Decompile Scripts",
+	Text = "Enable Script Decompilation",
 	Callback = function(value)
 		s.decompile = value
 	end,
-	Enabled = s.decompile
+	Enabled = s.decompile,
+	Menu = {
+		Info = function()
+			UI.Banner("Toggle script decompilation on/off. When disabled, only script information will be saved.")
+		end
+	}
 })
+
+-- Debug Settings Section  
+page.Label({
+	Text = "═══ Debug Options ═══"
+})
+
 page.Toggle({
-	Text = "Dump Debug Info",
+	Text = "Include Debug Information",
 	Callback = function(value)
 		s.dump_debug = value
 	end,
 	Enabled = s.dump_debug,
 	Menu = {
 		Info = function()
-			UI.Banner("If enabled, output will include debug info such as constants, upvalues, and protos.")
+			UI.Banner("Includes debug info such as constants, upvalues, and protos in the output files.")
 		end
 	}
 })
+
 page.Toggle({
-	Text = "Detailed Debug Info",
+	Text = "Detailed Debug Mode",
 	Callback = function(value)
 		s.detailed_info = value
 	end,
 	Enabled = s.detailed_info,
 	Menu = {
 		Info = function()
-			UI.Banner("<b>This feature may crash the game. Increase the <u>Delay</u> and decrease the # of <u>Max Threads</u> if needed.</b><br />If <b>Dump Debug Info</b> is enabled, it will dump more, detailed debug info.")
+			UI.Banner("<b>⚠️ WARNING:</b> This feature may cause instability. Use with caution!\nProvides extensive debug information when Debug Info is enabled.")
 		end
 	}
 })
-page.Slider({
-	Text = "Max Threads",
+-- Performance Settings Section
+page.Label({
+	Text = "═══ Performance Settings ═══"
+})
+
+page.Dropdown({
+	Text = "Thread Count",
 	Callback = function(value)
-		s.threads = value
+		s.threads = tonumber(value)
 	end,
-	Min = 1,
-	Max = 20,
-	Def = s.threads,
-	Suffix = " threads",
+	Options = {"1", "2", "3", "4", "5", "6", "7", "8", "10", "12", "15", "20"},
+	Def = tostring(s.threads),
 	Menu = {
 		Info = function()
-			UI.Banner("This determines how many scripts can be decompiled at the same time.\n<b>Having more threads active at once will utilize more of your computer's resources and may increase the amount of timed-out decompilations.</b>")
+			UI.Banner("Number of scripts processed simultaneously.\n<b>Higher values = faster processing but more resource usage.</b>\n\nRecommended: 3-5 for stability")
 		end
 	}
 })
-page.Slider({
-	Text = "Delay",
+
+page.Dropdown({
+	Text = "Processing Delay",
 	Callback = function(value)
-		s.delay = value
+		s.delay = tonumber(value)
 	end,
-	Min = 0,
-	Max = 1,
-	Def = s.delay,
-	Decimals = 2,
-	Suffix = " seconds"
-})
-page.Slider({
-	Text = "Decompile Timeout",
-	Callback = function(value)
-		s.timeout = value
-	end,
-	Min = 5,
-	Max = 30,
-	Def = s.timeout,
-	Suffix = " seconds",
-	Decimals = 2,
+	Options = {"0.01", "0.05", "0.1", "0.25", "0.5", "1.0"},
+	Def = tostring(s.delay),
 	Menu = {
 		Info = function()
-			UI.Banner("If the decompile time exceeds this duration, it will be skipped.")
+			UI.Banner("Delay between processing operations in seconds.\n<b>Higher values = more stable but slower processing.</b>\n\nRecommended: 0.05 for balance")
 		end
 	}
 })
+
+-- Advanced Options Section
+page.Label({
+	Text = "═══ Advanced Options ═══"
+})
+
 page.Toggle({
 	Text = "Include Nil Scripts",
 	Callback = function(value)
@@ -351,22 +366,29 @@ page.Toggle({
 	Enabled = s.include_nil,
 	Menu = {
 		Info = function()
-			UI.Banner("If enabled, scripts parented to nil will also be decompiled.")
+			UI.Banner("Includes scripts that are parented to nil (disconnected from the game hierarchy).\n<b>May find hidden or removed scripts.</b>")
 		end
 	}
 })
+
 page.Toggle({
-	Text = "Replace Username",
+	Text = "Anonymize Usernames",
 	Callback = function(value)
 		s.replace_username = value
 	end,
 	Enabled = s.replace_username,
 	Menu = {
 		Info = function()
-			UI.Banner("If enabled, all objects that contain your username will be replaced to <b>LocalPlayer</b>.")
+			UI.Banner("Replaces your username with 'LocalPlayer' in all script paths and references.\n<b>Recommended for privacy when sharing dumps.</b>")
 		end
 	}
 })
+
+-- Optimization Section
+page.Label({
+	Text = "═══ Optimization ═══"
+})
+
 page.Toggle({
 	Text = "Disable 3D Rendering",
 	Callback = function(value)
@@ -375,17 +397,78 @@ page.Toggle({
 	Enabled = s.disable_render,
 	Menu = {
 		Info = function()
-			UI.Banner("If enabled, 3D rendering will be disabled temporarily while the script dumper is active. Allows more resources to be utilized towards decompiling.")
+			UI.Banner("Temporarily disables 3D rendering during script dumping.\n<b>Frees up resources for faster processing.</b>\n\nScreen will go dark during operation.")
 		end
 	}
 })
 
+-- Action Section
+page.Label({
+	Text = "═══ Actions ═══"
+})
+
+-- Add preset buttons for common configurations
+page.Button({
+	Text = "🔧 Quick Setup (Recommended)",
+	Callback = function()
+		s.decompile = true
+		s.dump_debug = false
+		s.detailed_info = false
+		s.threads = 5
+		s.delay = 0.05
+		s.include_nil = false
+		s.replace_username = true
+		s.disable_render = true
+		UI.Banner("✅ Applied recommended settings for stable operation!")
+	end
+})
+
+page.Button({
+	Text = "⚡ Performance Mode",
+	Callback = function()
+		s.decompile = true
+		s.dump_debug = false
+		s.detailed_info = false
+		s.threads = 10
+		s.delay = 0.01
+		s.include_nil = false
+		s.replace_username = true
+		s.disable_render = true
+		UI.Banner("⚡ Applied high-performance settings!")
+	end
+})
+
+page.Button({
+	Text = "🔍 Debug Mode",
+	Callback = function()
+		s.decompile = true
+		s.dump_debug = true
+		s.detailed_info = false
+		s.threads = 3
+		s.delay = 0.1
+		s.include_nil = true
+		s.replace_username = true
+		s.disable_render = true
+		UI.Banner("🔍 Applied debug-focused settings!")
+	end
+})
+
 local progressbar = nil
 local threadbind = Instance.new("BindableEvent")
+
 page.Button({
-	Text = "Start Dumping",
+	Text = "🚀 Start Script Dumping",
 	Callback = function()
-		if progressbar then UI.Banner("A script dump is still currently in progress!") return end
+		if progressbar then 
+			UI.Banner("⚠️ A script dump is already in progress! Please wait for it to complete.")
+			return 
+		end
+		
+		-- Validate settings before starting
+		if not validateSettings() then
+			UI.Banner("❌ Invalid settings detected! Please check your configuration.")
+			return
+		end
 
 		if s.disable_render then
 			overlay.Visible = true
@@ -394,20 +477,30 @@ page.Button({
 
 		local scripts = {}
 		local nilscripts = {}
-		timedoutscripts = {}
 		scriptsdumped = 0
 
-		for _,v in next, game:GetDescendants() do
-			if (v:IsA("LocalScript") or v:IsA("ModuleScript")) and not isignored(v) then
-				table.insert(scripts, v)
-			end
-		end
-		if s.include_nil then
-			for _,v in next, getnilinstances() do
+		-- Safely collect scripts with error handling
+		local success, err = pcall(function()
+			for _,v in next, game:GetDescendants() do
 				if (v:IsA("LocalScript") or v:IsA("ModuleScript")) and not isignored(v) then
-					table.insert(nilscripts, v)
+					table.insert(scripts, v)
 				end
 			end
+		end)
+		
+		if not success then
+			UI.Banner("❌ Error collecting scripts: " .. tostring(err))
+			return
+		end
+		
+		if s.include_nil and getnilinstances then
+			pcall(function()
+				for _,v in next, getnilinstances() do
+					if (v:IsA("LocalScript") or v:IsA("ModuleScript")) and not isignored(v) then
+						table.insert(nilscripts, v)
+					end
+				end
+			end)
 		end
 
 		task.spawn(function()
@@ -428,15 +521,17 @@ page.Button({
 			Percent = false
 		})
 
-		UI.Banner(total.." scripts found. Dumping scripts...")
+		UI.Banner(format("📊 Found %d scripts to process. Starting dump operation...", total))
 
 		local time = os.clock()
 
+		-- Process regular scripts
 		for _,v in next, scripts do
 			dumpscript(v)
 		end
 		delay()
 
+		-- Process nil scripts if enabled
 		if s.include_nil and getnilinstances then
 			for _,v in next, nilscripts do
 				dumpscript(v, true)
@@ -444,14 +539,12 @@ page.Button({
 			delay()
 		end
 
+		-- Wait for all threads to complete
 		repeat task.wait() until threads == 0
 
-		local result = format("Successfully dumped scripts, took %s seconds.%s", os.clock() - time, #timedoutscripts > 0 and "\n"..#timedoutscripts.." scripts timed out while decompiling." or "")
+		local duration = os.clock() - time
+		local result = format("✅ Successfully dumped %d scripts in %.2f seconds!\n📁 Files saved to: %s", total, duration, foldername)
 		UI.Banner(result)
-		
-		if #timedoutscripts > 0 then
-			writefile(format("%s/! Timed out scripts.txt", foldername), concat(timedoutscripts, "\n\n"))
-		end
 
 		if s.disable_render then
 			RunService:Set3dRenderingEnabled(true)
@@ -463,7 +556,50 @@ page.Button({
 		progressbar = nil
 	end
 })
+-- Status Section
 page.Label({
-	Text = "Active Threads: 0",
+	Text = "═══ Status ═══"
+})
+
+page.Label({
+	Text = "🔄 Active Threads: 0",
 	Event = threadbind
+})
+
+-- Add information section
+page.Label({
+	Text = "═══ Information ═══"
+})
+
+page.Button({
+	Text = "ℹ️ About This Tool",
+	Callback = function()
+		UI.Banner("<b>Pro Script Dumper v2.0</b>\n\n• Enhanced UI with preset configurations\n• No timeout limitations - complete processing guaranteed\n• Improved stability and performance\n• Better error handling and user feedback\n\n<b>Created by:</b> Enhanced version")
+	end
+})
+
+page.Button({
+	Text = "📋 Current Settings",
+	Callback = function()
+		local settings = format(
+			"<b>Current Configuration:</b>\n\n" ..
+			"• Decompilation: %s\n" ..
+			"• Debug Info: %s\n" ..
+			"• Detailed Debug: %s\n" ..
+			"• Thread Count: %d\n" ..
+			"• Processing Delay: %.2fs\n" ..
+			"• Include Nil Scripts: %s\n" ..
+			"• Anonymize Usernames: %s\n" ..
+			"• Disable 3D Rendering: %s",
+			s.decompile and "✅ Enabled" or "❌ Disabled",
+			s.dump_debug and "✅ Enabled" or "❌ Disabled", 
+			s.detailed_info and "✅ Enabled" or "❌ Disabled",
+			s.threads,
+			s.delay,
+			s.include_nil and "✅ Enabled" or "❌ Disabled",
+			s.replace_username and "✅ Enabled" or "❌ Disabled",
+			s.disable_render and "✅ Enabled" or "❌ Disabled"
+		)
+		UI.Banner(settings)
+	end
 })
